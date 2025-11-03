@@ -1,0 +1,142 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+struct Node {
+    vector<int> path;       // cities visited so far
+    vector<bool> visited;   // mark visited cities
+    double cost;            // cost so far
+    double bound;           // lower bound estimate
+    int level;              // depth in tree (number of cities visited)
+};
+
+// Calculate lower bound (reduction-based heuristic)
+double calculateBound(const vector<vector<double>>& costMatrix, const vector<bool>& visited, double currentCost, int currentCity) {
+    int n = costMatrix.size();
+    double bound = currentCost;
+
+    // add minimal outgoing edge cost for unvisited cities
+    for (int i = 0; i < n; i++) {
+        if (!visited[i]) {
+            double minEdge = DBL_MAX;
+            for (int j = 0; j < n; j++) {
+                if (i != j && !visited[j]) {
+                    minEdge = min(minEdge, costMatrix[i][j]);
+                }
+            }
+            if (minEdge != DBL_MAX)
+                bound += minEdge;
+        }
+    }
+
+    // also add minimal return cost from currentCity to any unvisited
+    double minReturn = DBL_MAX;
+    for (int j = 0; j < n; j++) {
+        if (!visited[j]) minReturn = min(minReturn, costMatrix[currentCity][j]);
+    }
+    if (minReturn != DBL_MAX) bound += minReturn;
+
+    return bound;
+}
+
+// Comparison for priority queue (min-heap based on bound)
+struct CompareNode {
+    bool operator()(const Node& a, const Node& b) {
+        return a.bound > b.bound;
+    }
+};
+
+pair<vector<int>, double> LCBB_TSP(const vector<vector<double>>& costMatrix, int startCity) {
+    int n = costMatrix.size();
+    priority_queue<Node, vector<Node>, CompareNode> pq;
+
+    // initial node
+    Node root;
+    root.path = {startCity};
+    root.visited = vector<bool>(n, false);
+    root.visited[startCity] = true;
+    root.cost = 0;
+    root.bound = calculateBound(costMatrix, root.visited, 0, startCity);
+    root.level = 1;
+
+    pq.push(root);
+
+    double bestCost = DBL_MAX;
+    vector<int> bestPath;
+
+    while (!pq.empty()) {
+        Node current = pq.top();
+        pq.pop();
+
+        if (current.bound >= bestCost) continue; // prune
+
+        // if all cities visited, return to start
+        if (current.level == n) {
+            double totalCost = current.cost + costMatrix[current.path.back()][startCity];
+            if (totalCost < bestCost) {
+                bestCost = totalCost;
+                bestPath = current.path;
+                bestPath.push_back(startCity);
+            }
+            continue;
+        }
+
+        int currentCity = current.path.back();
+
+        // expand to next cities
+        for (int next = 0; next < n; next++) {
+            if (!current.visited[next]) {
+                Node child;
+                child.path = current.path;
+                child.path.push_back(next);
+                child.visited = current.visited;
+                child.visited[next] = true;
+                child.cost = current.cost + costMatrix[currentCity][next];
+                child.level = current.level + 1;
+
+                child.bound = calculateBound(costMatrix, child.visited, child.cost, next);
+
+                if (child.bound < bestCost)
+                    pq.push(child);
+            }
+        }
+    }
+
+    return {bestPath, bestCost};
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int N;
+    cout << "Enter number of cities: ";
+    cin >> N;
+
+    cout << "\nEnter distance/fuel/time weighted cost matrix (" << N << "x" << N << "):\n";
+    vector<vector<double>> costMatrix(N, vector<double>(N));
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            cin >> costMatrix[i][j];
+            if (i == j) costMatrix[i][j] = DBL_MAX; // no self loops
+        }
+    }
+
+    int startCity = 0;
+    cout << "\nEnter starting city index (0-" << N-1 << "): ";
+    cin >> startCity;
+
+    auto start = chrono::high_resolution_clock::now();
+    auto [bestPath, bestCost] = LCBB_TSP(costMatrix, startCity);
+    auto end = chrono::high_resolution_clock::now();
+
+    double timeTaken = chrono::duration<double, milli>(end - start).count();
+
+    cout << "\n===== Optimal Route Found (LC Branch and Bound) =====\n";
+    cout << "Route: ";
+    for (int c : bestPath) cout << c << " ";
+    cout << "\nMinimum Total Cost: " << bestCost;
+    cout << "\nExecution Time: " << timeTaken << " ms\n";
+    cout << "=====================================================\n";
+    return 0;
+}
