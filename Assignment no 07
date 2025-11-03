@@ -1,0 +1,235 @@
+import java.util.*;  
+import java.io.*;  
+import java.text.*;  
+import java.time.*;  
+public class UniversityTimetable {  
+ static class AllocResult {  
+ int colorsUsed;  
+ double timeMs;  
+ List<Integer> color;  
+ List<Integer> roomAssigned;  
+ int roomsAssignedCount;  
+ int roomsUnassignedCount;  
+ AllocResult(int colorsUsed, double timeMs, List<Integer> color, List<Integer> roomAssigned,   int roomsAssignedCount, int roomsUnassignedCount) {  
+ this.colorsUsed = colorsUsed;  
+ this.timeMs = timeMs;  
+ this.color = color;  
+ this.roomAssigned = roomAssigned;  
+ this.roomsAssignedCount = roomsAssignedCount;  
+ this.roomsUnassignedCount = roomsUnassignedCount;  
+ }  
+ } 
+ static List<List<Integer>> build_conflict_graph(int n, List<List<Integer>> studentEnrollments) {   List<Set<Integer>> adjset = new ArrayList<>();  
+ for (int i = 0; i < n; i++) adjset.add(new HashSet<>());  
+ for (List<Integer> en : studentEnrollments) {  
+ int k = en.size();  
+ for (int i = 0; i < k; i++) {  
+ for (int j = i + 1; j < k; j++) {  
+ int a = en.get(i), b = en.get(j);  
+ if (a == b) continue;  
+ adjset.get(a).add(b);  
+ adjset.get(b).add(a);  
+ }  
+ }  
+ }  
+ List<List<Integer>> adj = new ArrayList<>();  
+ for (int i = 0; i < n; i++) {  
+ adj.add(new ArrayList<>(adjset.get(i)));  
+ }  
+ return adj;  
+ }  
+ static AllocResult greedy_coloring_with_rooms(List<List<Integer>> adj, List<Integer>  enrollments,  
+ List<Integer> roomCaps, List<Integer> order) {   int n = adj.size();  
+ List<Integer> color = new ArrayList<>(Collections.nCopies(n, -1));  
+ long t0 = System.nanoTime();  
+ for (int v : order) {  
+ boolean[] used = new boolean[n];  
+ for (int u : adj.get(v))  
+ if (color.get(u) != -1) used[color.get(u)] = true;  
+ int c = 0;  
+ while (c < n && used[c]) c++;  
+ color.set(v, c);  
+ }  
+ long t1 = System.nanoTime();  
+ double dt = (t1 - t0) / 1e6;  
+ int maxc = 0;  
+ for (int x : color) maxc = Math.max(maxc, x);  
+ int colorsUsed = maxc + 1;  
+ List<Integer> roomAssigned = new ArrayList<>(Collections.nCopies(n, -1));   int roomsAssignedCount = 0, roomsUnassignedCount = 0;  
+ List<List<Integer>> byColor = new ArrayList<>();  
+ for (int i = 0; i < colorsUsed; i++) byColor.add(new ArrayList<>());  
+ for (int i = 0; i < n; i++) byColor.get(color.get(i)).add(i);  
+ int R = roomCaps.size();  
+ for (int c = 0; c < colorsUsed; c++) {  
+ List<Integer> exams = byColor.get(c);  
+ exams.sort((a, b) -> enrollments.get(b) - enrollments.get(a));  
+ List<Integer> roomIndex = new ArrayList<>(); 
+ for (int i = 0; i < R; i++) roomIndex.add(i);  
+ roomIndex.sort(Comparator.comparingInt(roomCaps::get));  
+ boolean[] usedRoom = new boolean[R];  
+ for (int e : exams) {  
+ int pick = -1;  
+ for (int ri : roomIndex) {  
+ if (!usedRoom[ri] && roomCaps.get(ri) >= enrollments.get(e)) {   pick = ri;  
+ break;  
+ }  
+ }  
+ if (pick != -1) {  
+ roomAssigned.set(e, pick);  
+ usedRoom[pick] = true;  
+ roomsAssignedCount++;  
+ } else {  
+ roomsUnassignedCount++;  
+ }  
+ }  
+ }  
+ return new AllocResult(colorsUsed, dt, color, roomAssigned, roomsAssignedCount,  roomsUnassignedCount);  
+ }  
+ static AllocResult greedy_order_default(List<List<Integer>> adj, List<Integer> enrollments,  List<Integer> roomCaps) {  
+ int n = adj.size();  
+ List<Integer> order = new ArrayList<>();  
+ for (int i = 0; i < n; i++) order.add(i);  
+ return greedy_coloring_with_rooms(adj, enrollments, roomCaps, order);   }  
+ static AllocResult welsh_powell(List<List<Integer>> adj, List<Integer> enrollments,  List<Integer> roomCaps) {  
+ int n = adj.size();  
+ List<int[]> deg = new ArrayList<>();  
+ for (int i = 0; i < n; i++) deg.add(new int[]{adj.get(i).size(), i});  
+ deg.sort((a, b) -> (b[0] != a[0]) ? (b[0] - a[0]) : (a[1] - b[1]));  
+ List<Integer> order = new ArrayList<>();  
+ for (int[] p : deg) order.add(p[1]);  
+ return greedy_coloring_with_rooms(adj, enrollments, roomCaps, order);   }  
+ static AllocResult dsatur(List<List<Integer>> adj, List<Integer> enrollments, List<Integer>  roomCaps) {  
+ int n = adj.size();  
+ List<Integer> color = new ArrayList<>(Collections.nCopies(n, -1));   List<Set<Integer>> neighborColors = new ArrayList<>();  
+ List<Integer> degree = new ArrayList<>();  
+ for (int i = 0; i < n; i++) {  
+ neighborColors.add(new HashSet<>());  
+ degree.add(adj.get(i).size());  
+ } 
+ long t0 = System.nanoTime();  
+ int colored = 0;  
+ while (colored < n) {  
+ int pick = -1, bestSat = -1, bestDeg = -1;  
+ for (int v = 0; v < n; v++) {  
+ if (color.get(v) == -1) {  
+ int sat = neighborColors.get(v).size();  
+ if (sat > bestSat || (sat == bestSat && degree.get(v) > bestDeg)   || (sat == bestSat && degree.get(v) == bestDeg && (pick == -1 || v < pick))) {   bestSat = sat;  
+ bestDeg = degree.get(v);  
+ pick = v;  
+ }  
+ }  
+ }  
+ boolean[] used = new boolean[n];  
+ for (int u : adj.get(pick))  
+ if (color.get(u) != -1) used[color.get(u)] = true;  
+ int c = 0;  
+ while (c < n && used[c]) c++;  
+ color.set(pick, c);  
+ colored++;  
+ for (int u : adj.get(pick))  
+ if (color.get(u) == -1) neighborColors.get(u).add(c);  
+ }  
+ long t1 = System.nanoTime();  
+ double dt = (t1 - t0) / 1e6;  
+ int maxc = 0;  
+ for (int x : color) maxc = Math.max(maxc, x);  
+ int colorsUsed = maxc + 1;  
+ List<Integer> roomAssigned = new ArrayList<>(Collections.nCopies(n, -1));   int roomsAssignedCount = 0, roomsUnassignedCount = 0;  
+ List<List<Integer>> byColor = new ArrayList<>();  
+ for (int i = 0; i < colorsUsed; i++) byColor.add(new ArrayList<>());   for (int i = 0; i < n; i++) byColor.get(color.get(i)).add(i);  
+ int R = roomCaps.size();  
+ for (int c = 0; c < colorsUsed; c++) {  
+ List<Integer> exams = byColor.get(c);  
+ exams.sort((a, b) -> enrollments.get(b) - enrollments.get(a));  
+ List<Integer> roomIndex = new ArrayList<>();  
+ for (int i = 0; i < R; i++) roomIndex.add(i);  
+ roomIndex.sort(Comparator.comparingInt(roomCaps::get));  
+ boolean[] usedRoom = new boolean[R];  
+ for (int e : exams) {  
+ int pickR = -1;  
+ for (int ri : roomIndex) {  
+ if (!usedRoom[ri] && roomCaps.get(ri) >= enrollments.get(e)) { 
+ pickR = ri;  
+ break;  
+ }  
+ }  
+ if (pickR != -1) {  
+ roomAssigned.set(e, pickR);  
+ usedRoom[pickR] = true;  
+ roomsAssignedCount++;  
+ } else roomsUnassignedCount++;  
+ }  
+ }  
+ return new AllocResult(colorsUsed, dt, color, roomAssigned, roomsAssignedCount,  roomsUnassignedCount);  
+ }  
+ static void print_summary(String name, AllocResult res, List<Integer> enrollments,  List<Integer> roomCaps) {  
+ System.out.println("=== " + name + " ===");  
+ System.out.println("Colors (timeslots) used: " + res.colorsUsed);  
+ System.out.printf("Algorithm runtime: %.3f ms%n", res.timeMs);  
+ System.out.println("Rooms total: " + roomCaps.size());  
+ System.out.println("Exams assigned to rooms: " + res.roomsAssignedCount);   System.out.println("Exams unassigned (rooms shortage): " + res.roomsUnassignedCount);   System.out.println("Per-course assignment (course_id : slot ; enrollment ; room_id[or -1])");   for (int i = 0; i < res.color.size(); i++) {  
+ System.out.println(i + " : slot=" + res.color.get(i)  
+ + " ; enroll=" + enrollments.get(i)  
+ + " ; room=" + res.roomAssigned.get(i));  
+ }  
+ System.out.println();  
+ }  
+ public static void main(String[] args) throws Exception {  
+ Scanner sc = new Scanner(System.in);  
+ System.out.println("University Timetable Scheduling");  
+ System.out.print("Choose input mode (1 = provide data, 2 = generate sample): ");   int mode = sc.nextInt();  
+ int nCourses = 0, nStudents = 0;  
+ List<List<Integer>> students = new ArrayList<>();  
+ List<Integer> enrollments = new ArrayList<>();  
+ if (mode == 1) {  
+ System.out.print("Enter number of courses and number of students: ");   nCourses = sc.nextInt();  
+ nStudents = sc.nextInt();  
+ students = new ArrayList<>(nStudents);  
+ for (int i = 0; i < nStudents; i++) students.add(new ArrayList<>());  
+ System.out.println("For each student enter count k followed by k course indices (0-based).  Provide " + nStudents + " lines:");  
+ for (int i = 0; i < nStudents; i++) {  
+ int k = sc.nextInt();  
+ for (int j = 0; j < k; j++) students.get(i).add(sc.nextInt());  
+ } 
+ enrollments = new ArrayList<>(Collections.nCopies(nCourses, 0));   for (List<Integer> en : students)  
+ for (int c : en)  
+ if (c >= 0 && c < nCourses)  
+ enrollments.set(c, enrollments.get(c) + 1);  
+ } else {  
+ nCourses = 20;  
+ nStudents = 60;  
+ students = new ArrayList<>(nStudents);  
+ Random rng = new Random(1234567L);  
+ for (int s = 0; s < nStudents; s++) {  
+ int k = 1 + rng.nextInt(5);  
+ Set<Integer> st = new HashSet<>();  
+ while (st.size() < k) st.add(rng.nextInt(nCourses));  
+ students.add(new ArrayList<>(st));  
+ }  
+ enrollments = new ArrayList<>(Collections.nCopies(nCourses, 0));   for (List<Integer> en : students)  
+ for (int c : en)  
+ enrollments.set(c, enrollments.get(c) + 1);  
+ System.out.println("Generated sample with " + nCourses + " courses and " + nStudents + "  students.");  
+ }  
+ System.out.print("Enter number of rooms: ");  
+ int R = sc.nextInt();  
+ List<Integer> roomCaps = new ArrayList<>();  
+ System.out.println("Enter room capacities (space separated):");  
+ for (int i = 0; i < R; i++) roomCaps.add(sc.nextInt());  
+ List<List<Integer>> adj = build_conflict_graph(enrollments.size(), students);   System.out.println("\nBuilding and running algorithms...\n");  
+ long startAll = System.nanoTime();  
+ AllocResult resGreedy = greedy_order_default(adj, enrollments, roomCaps);   AllocResult resWelsh = welsh_powell(adj, enrollments, roomCaps);  
+ AllocResult resDsatur = dsatur(adj, enrollments, roomCaps);  
+ long endAll = System.nanoTime();  
+ double totalElapsed = (endAll - startAll) / 1e6;  
+ print_summary("Greedy (input order)", resGreedy, enrollments, roomCaps);   print_summary("Welsh-Powell (degree order)", resWelsh, enrollments, roomCaps);   print_summary("DSATUR (saturation heuristic)", resDsatur, enrollments, roomCaps);  
+ System.out.println("Comparison summary:");  
+ System.out.printf("%-20s%-12s%-14s%-14s%n", "Algorithm", "Slots", "Time(ms)",  "RoomsUnassigned");  
+ System.out.printf("%-20s%-12d%-14.3f%-14d%n", "Greedy", resGreedy.colorsUsed,  resGreedy.timeMs, resGreedy.roomsUnassignedCount);  
+ System.out.printf("%-20s%-12d%-14.3f%-14d%n", "Welsh-Powell", resWelsh.colorsUsed,  resWelsh.timeMs, resWelsh.roomsUnassignedCount);  
+ System.out.printf("%-20s%-12d%-14.3f%-14d%n", "DSATUR", resDsatur.colorsUsed,  resDsatur.timeMs, resDsatur.roomsUnassignedCount); 
+ System.out.printf("%nTotal comparison runtime: %.3f ms%n", totalElapsed);   System.out.println("\nNotes:");  
+ System.out.println("Slots = number of distinct timeslots/colors used by the algorithm.");   System.out.println("RoomsUnassigned > 0 means some exams could not be placed in rooms  for that slot (rooms shortage).");  
+ System.out.println("To eliminate unassigned exams either increase room count/capacities or  allow additional slots and re-run allocation.");  
+ }  
+}  
