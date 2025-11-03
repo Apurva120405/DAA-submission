@@ -1,0 +1,95 @@
+#include <iostream>
+#include <vector>
+#include <string>
+using namespace std;
+
+// Structure to store movie details
+struct Movie {
+    string title;
+    double imdbRating;
+    int releaseYear;
+    int watchTime; // popularity based on watch time
+};
+
+// Function to swap two movies
+void swap(Movie &a, Movie &b) {
+    Movie temp = a;
+    a = b;
+    b = temp;
+}
+
+// Partition function for QuickSort
+int partition(vector<Movie> &movies, int low, int high, int choice) {
+    double pivot;
+    if (choice == 1) pivot = movies[high].imdbRating;
+    else if (choice == 2) pivot = movies[high].releaseYear;
+    else pivot = movies[high].watchTime;
+
+    int i = low - 1;
+
+    for (int j = low; j < high; j++) {
+        bool condition = false;
+        if (choice == 1) condition = (movies[j].imdbRating > pivot); // higher rating first
+        else if (choice == 2) condition = (movies[j].releaseYear > pivot); // newer first
+        else condition = (movies[j].watchTime > pivot); // more watched first
+
+        if (condition) {
+            i++;
+            swap(movies[i], movies[j]);
+        }
+    }
+    swap(movies[i + 1], movies[high]);
+    return (i + 1);
+}
+
+// QuickSort function
+void quickSort(vector<Movie> &movies, int low, int high, int choice) {
+    if (low < high) {
+        int pi = partition(movies, low, high, choice);
+        quickSort(movies, low, pi - 1, choice);
+        quickSort(movies, pi + 1, high, choice);
+    }
+}
+
+// Function to display movies
+void displayMovies(const vector<Movie> &movies) {
+    cout << "\n---------------------------------------------\n";
+    cout << "Title\t\tIMDb\tYear\tWatchTime\n";
+    cout << "---------------------------------------------\n";
+    for (const auto &m : movies) {
+        cout << m.title << "\t\t" << m.imdbRating << "\t" 
+             << m.releaseYear << "\t" << m.watchTime << endl;
+    }
+}
+
+int main() {
+    vector<Movie> movies = {
+        {"Inception", 8.8, 2010, 89000},
+        {"Interstellar", 8.6, 2014, 95000},
+        {"The Batman", 7.9, 2022, 67000},
+        {"Oppenheimer", 8.7, 2023, 120000},
+        {"Dune", 8.1, 2021, 78000},
+        {"Joker", 8.5, 2019, 110000}
+    };
+
+    cout << "===== StreamFlix Movie Recommendation System =====\n";
+    cout << "Sort movies based on:\n";
+    cout << "1. IMDb Rating\n2. Release Year\n3. Watch Time Popularity\n";
+    cout << "Enter your choice (1-3): ";
+
+    int choice;
+    cin >> choice;
+
+    if (choice < 1 || choice > 3) {
+        cout << "Invalid choice. Exiting...\n";
+        return 0;
+    }
+
+    // Sort using QuickSort
+    quickSort(movies, 0, movies.size() - 1, choice);
+
+    // Display sorted movies
+    displayMovies(movies);
+
+    return 0;
+}
